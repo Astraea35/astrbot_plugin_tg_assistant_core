@@ -1,5 +1,5 @@
 name: astrbot_plugin_tg_assistant_core
 desc: Telegram NAS 联动平台，支持私人插件、文字消息编辑、媒体传输和订阅推送
 author: Astraea35
-version: 1.1.0
+version: 1.1.1
 repo: https://github.com/Astraea35/astrbot_plugin_tg_assistant_core

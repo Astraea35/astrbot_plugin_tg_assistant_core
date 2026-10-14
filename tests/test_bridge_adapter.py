@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -36,3 +38,42 @@ def test_incoming_media_paths_cannot_escape_the_share(tmp_path):
     for name in ("../file", "..\\file", "folder/file", "/etc/passwd", "missing"):
         with pytest.raises(ValueError):
             adapter.shared_media_path(tmp_path, name)
+
+
+@pytest.mark.asyncio
+async def test_text_delivery_retries_use_the_same_id(monkeypatch):
+    error = adapter.aiohttp.ClientResponseError(None, (), status=503)
+    responses = []
+    for failure in (error, None):
+        response = SimpleNamespace(
+            status=503 if failure else 200,
+            json=AsyncMock(return_value={"ok": True}),
+            raise_for_status=Mock(side_effect=failure),
+        )
+        manager = AsyncMock()
+        manager.__aenter__.return_value = response
+        responses.append(manager)
+    instance = adapter.NasTelegramAdapter.__new__(adapter.NasTelegramAdapter)
+    instance.whitelist = {"123"}
+    instance.secret = "a" * 40
+    instance.nas_url = "http://nas"
+    instance.http = SimpleNamespace(post=Mock(side_effect=responses))
+    monkeypatch.setattr(adapter.asyncio, "sleep", AsyncMock())
+    assert (await instance.deliver("123", [{"type": "text", "text": "result"}]))["ok"]
+    calls = instance.http.post.call_args_list
+    assert len(calls) == 2
+    assert calls[0].kwargs["json"]["delivery_id"] == calls[1].kwargs["json"]["delivery_id"]
+
+
+def test_scheduled_command_uses_the_bridge_event():
+    instance = adapter.NasTelegramAdapter.__new__(adapter.NasTelegramAdapter)
+    instance.metadata = adapter.PlatformMetadata(name="telegram", description="test", id="nas_tg")
+    message = adapter.AstrBotMessage()
+    message.type = adapter.MessageType.FRIEND_MESSAGE
+    message.self_id = "bot"
+    message.session_id = "123"
+    message.message_str = "/fortune"
+    message.sender = adapter.MessageMember(user_id="123", nickname="test")
+    event = instance.create_event(message)
+    assert isinstance(event, adapter.NasTelegramEvent)
+    assert event.request_id == ""

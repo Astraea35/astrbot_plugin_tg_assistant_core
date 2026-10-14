@@ -9,7 +9,7 @@ from .bridge_adapter import NasTelegramAdapter  # noqa: F401
     "astrbot_plugin_tg_assistant_core",
     "Astraea35",
     "Telegram NAS private assistant transport",
-    "1.1.0",
+    "1.1.1",
 )
 class TGAssistantCorePlugin(Star):
     def __init__(self, context: Context, config=None):

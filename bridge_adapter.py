@@ -186,6 +186,9 @@ class NasTelegramAdapter(Platform):
     def get_client(self):
         return self
 
+    def create_event(self, message: AstrBotMessage) -> NasTelegramEvent:
+        return NasTelegramEvent(message, self, "")
+
     def background_task(self, coroutine) -> None:
         task = asyncio.create_task(coroutine)
         self._tasks.add(task)
@@ -354,16 +357,33 @@ class NasTelegramAdapter(Platform):
             "had_output": had_output,
             "delivery_id": secrets.token_urlsafe(24),
         }
-        async with self.http.post(
-            self.nas_url + "/api/astrbot/push",
-            json=payload,
-            headers={"X-Bridge-Token": self.secret},
-        ) as response:
-            response.raise_for_status()
-            result = await response.json()
-            if not result.get("ok"):
-                raise RuntimeError("NAS rejected a Telegram delivery")
-            return result
+        attempts = 3 if all(part.get("type") == "text" for part in parts) else 1
+        for attempt in range(attempts):
+            try:
+                async with self.http.post(
+                    self.nas_url + "/api/astrbot/push",
+                    json=payload,
+                    headers={"X-Bridge-Token": self.secret},
+                ) as response:
+                    if response.status >= 400:
+                        error = await response.json()
+                        logger.error(
+                            "NAS Telegram delivery rejected: %s (%s)",
+                            response.status, error.get("error_type", error.get("error", "unknown")),
+                        )
+                    response.raise_for_status()
+                    result = await response.json()
+                    if not result.get("ok"):
+                        raise RuntimeError("NAS rejected a Telegram delivery")
+                    return result
+            except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+                if (
+                    attempt == attempts - 1
+                    or isinstance(error, aiohttp.ClientResponseError) and error.status < 500
+                ):
+                    raise
+                await asyncio.sleep(attempt + 1)
+        raise RuntimeError("NAS delivery retries exhausted")
 
     async def send_by_session(self, session, message_chain: MessageChain) -> None:
         parts = await self.serialize_chain(message_chain.chain)

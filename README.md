@@ -25,3 +25,7 @@ GIFs, videos and files remain media. Proactive subscriptions create new messages
 AstrBot must remain running for its plugins; the NAS downloader remains usable
 when AstrBot is offline. The bridge uses direct LAN HTTP and does not inherit
 the Windows system proxy.
+
+Temporary text delivery failures receive bounded retries with the same delivery
+ID. Scheduled command events use the bridge transport as well as ordinary
+subscription messages.
